@@ -1,114 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>PDF Question Finder</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<meta charset="UTF-8">
+<title>PDF Question Finder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { background: linear-gradient(135deg, #f0f4f8, #d9e2ec); }
+#drop-zone.dragover { border-color: #3b82f6; background-color: #e0f2fe; }
+</style>
 </head>
-<body class="bg-gray-100 flex flex-col items-center min-h-screen py-10">
-  <h1 class="text-3xl font-bold mb-6 text-gray-800">📘 PDF Question Finder</h1>
+<body class="min-h-screen flex flex-col items-center justify-start py-10">
 
-  <div id="drop-zone" 
-       class="w-96 h-40 border-2 border-dashed border-gray-400 flex flex-col items-center justify-center rounded-lg bg-white cursor-pointer mb-4">
-    <p class="text-gray-500 mb-2">Drag & Drop PDFs here</p>
-    <p class="text-gray-400 text-sm">or click to select (max 10)</p>
-    <input type="file" id="fileInput" multiple accept=".pdf" hidden>
-    <div id="fileNames" class="text-sm text-gray-600 mt-2"></div>
-  </div>
+<h1 class="text-4xl font-bold mb-4 text-gray-800">PDF Question Finder</h1>
+<p class="text-gray-600 mb-8 text-center max-w-xl">
+  Upload up to 10 PDFs and see all unique questions with how many times they appeared.
+</p>
 
-  <button id="uploadBtn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition mb-4">Upload & Analyze</button>
-  <button id="downloadBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition mb-4">Download PDF</button>
+<div id="drop-zone" class="w-96 h-48 border-4 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all">
+  <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v4a2 2 0 002 2h12a2 2 0 002-2v-4M12 12v8m0 0l-4-4m4 4l4-4m-4-8V4m0 0l-4 4m4-4l4 4"/>
+  </svg>
+  <p class="text-gray-500 text-center">Drag & drop PDFs here<br>or click to select files</p>
+  <input type="file" id="fileInput" multiple accept=".pdf" hidden>
+</div>
 
-  <div id="results" class="mt-8 w-2/3"></div>
+<button id="uploadBtn" class="mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+  Upload & Analyze
+</button>
+
+<div id="results" class="mt-8 w-full max-w-5xl px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+<button id="downloadBtn" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md hidden">
+  Download Results
+</button>
 
 <script>
-  const dropZone = document.getElementById("drop-zone");
-  const fileInput = document.getElementById("fileInput");
-  const fileNamesDiv = document.getElementById("fileNames");
-  const downloadBtn = document.getElementById("downloadBtn");
-  let selectedFiles = [];
-  let lastResults = [];
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("fileInput");
+const downloadBtn = document.getElementById("downloadBtn");
+let selectedFiles = [];
 
-  dropZone.addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", (e) => {
-    selectedFiles = Array.from(e.target.files);
-    fileNamesDiv.innerHTML = selectedFiles.map(f => f.name).join("<br>");
-  });
+dropZone.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", e => selectedFiles = Array.from(e.target.files));
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => { e.preventDefault(); selectedFiles = Array.from(e.dataTransfer.files); dropZone.classList.remove("dragover"); });
 
-  dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.classList.add("bg-blue-100");
-  });
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+  if(selectedFiles.length === 0){ alert("Please select at least one PDF."); return; }
 
-  dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("bg-blue-100");
-  });
+  let formData = new FormData();
+  selectedFiles.forEach(f => formData.append("pdfs", f));
 
-  dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    selectedFiles = Array.from(e.dataTransfer.files);
-    fileNamesDiv.innerHTML = selectedFiles.map(f => f.name).join("<br>");
-    dropZone.classList.remove("bg-blue-100");
-  });
+  const resultsDiv = document.getElementById("results");
+  resultsDiv.innerHTML = `<p class="text-gray-600 col-span-full">Analyzing PDFs... please wait.</p>`;
+  downloadBtn.classList.add("hidden");
 
-  document.getElementById("uploadBtn").addEventListener("click", async () => {
-    if (selectedFiles.length === 0) {
-      alert("Please select at least one PDF file.");
+  try {
+    let res = await fetch("/upload", { method: "POST", body: formData });
+    let data = await res.json();
+
+    if(data.error){
+      resultsDiv.innerHTML = `<p class="text-red-500 col-span-full">${data.error}</p>`;
       return;
     }
 
-    let formData = new FormData();
-    selectedFiles.forEach(f => formData.append("pdfs", f));
+    resultsDiv.innerHTML = "";
+    let resultText = "";
 
-    const res = await fetch("/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    lastResults = data;
-
-    const resultsDiv = document.getElementById("results");
-    resultsDiv.innerHTML = "<h2 class='text-xl font-semibold mb-4'>📌 Most Likely Repeated Questions</h2>";
-
-    if (data.error) {
-      resultsDiv.innerHTML += `<p class="text-red-500">${data.error}</p>`;
-      return;
-    }
-
-    data.forEach((item, i) => {
+    data.forEach((item,index) => {
       resultsDiv.innerHTML += `
-        <div class="bg-white shadow p-4 rounded mb-3 flex justify-between items-center">
-          <p class="font-medium text-gray-800">Q${i + 1}: ${item.question}</p>
-          <span class="bg-green-200 text-green-800 px-2 py-1 rounded text-sm">Seen ${item.count} times</span>
-        </div>
-      `;
-    });
-  });
-
-  downloadBtn.addEventListener("click", () => {
-    if (!lastResults || lastResults.length === 0) {
-      alert("No results to download!");
-      return;
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    doc.setFontSize(16);
-    doc.text("📘 PDF Question Finder - Predicted Questions", 10, 15);
-
-    doc.setFontSize(12);
-    let y = 30;
-    lastResults.forEach((item, i) => {
-      const lines = doc.splitTextToSize(`Q${i+1}: ${item.question} (Seen ${item.count} times)`, 180);
-      doc.text(lines, 10, y);
-      y += lines.length * 7;
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
+        <div class="bg-white shadow-md p-4 rounded border-l-4 border-blue-500 hover:shadow-lg transition">
+          <p class="font-semibold">Q${index+1}:</p>
+          <p class="text-gray-700 mt-1">${item.question}</p>
+          <p class="text-sm text-gray-400 mt-1">Seen: ${item.count} times</p>
+        </div>`;
+      resultText += `Q${index+1}:\n${item.question}\nSeen: ${item.count} times\n\n`;
     });
 
-    doc.save("Predicted_Questions.pdf");
-  });
+    downloadBtn.classList.remove("hidden");
+    downloadBtn.onclick = () => {
+      const blob = new Blob([resultText], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "unique_questions.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+  } catch(err){
+    resultsDiv.innerHTML = `<p class="text-red-500 col-span-full">Error analyzing PDFs. Check console.</p>`;
+    console.error(err);
+  }
+});
 </script>
 </body>
 </html>
