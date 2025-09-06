@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>PDF Question Finder</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<!-- Add jsPDF library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 body { background: linear-gradient(135deg, #f0f4f8, #d9e2ec); }
 #drop-zone.dragover { border-color: #3b82f6; background-color: #e0f2fe; }
@@ -11,7 +13,7 @@ body { background: linear-gradient(135deg, #f0f4f8, #d9e2ec); }
 </head>
 <body class="min-h-screen flex flex-col items-center justify-start py-10">
 
-<h1 class="text-4xl font-bold mb-4 text-gray-800">PDF Question Finder</h1>
+<h1 class="text-4xl font-bold mb-4 text-gray-800">PDF Question Finder 'text based only' v1</h1>
 <p class="text-gray-600 mb-8 text-center max-w-xl">
   Upload up to 10 PDFs and see all unique questions with how many times they appeared.
 </p>
@@ -39,6 +41,7 @@ const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
 let selectedFiles = [];
+let resultData = []; // store results for PDF
 
 dropZone.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", e => selectedFiles = Array.from(e.target.files));
@@ -65,8 +68,8 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
       return;
     }
 
+    resultData = data; // save for PDF
     resultsDiv.innerHTML = "";
-    let resultText = "";
 
     data.forEach((item,index) => {
       resultsDiv.innerHTML += `
@@ -75,18 +78,27 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
           <p class="text-gray-700 mt-1">${item.question}</p>
           <p class="text-sm text-gray-400 mt-1">Seen: ${item.count} times</p>
         </div>`;
-      resultText += `Q${index+1}:\n${item.question}\nSeen: ${item.count} times\n\n`;
     });
 
     downloadBtn.classList.remove("hidden");
     downloadBtn.onclick = () => {
-      const blob = new Blob([resultText], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "unique_questions.txt";
-      a.click();
-      URL.revokeObjectURL(url);
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text("Most Repeated Questions", 10, 10);
+      let y = 20;
+
+      data.forEach((item,index) => {
+        doc.setFontSize(12);
+        doc.text(`Q${index+1}: ${item.question}`, 10, y);
+        y += 7;
+        doc.setFontSize(10);
+        doc.text(`Times Found: ${item.count}`, 10, y);
+        y += 10;
+        if(y > 280){ doc.addPage(); y = 10; }
+      });
+
+      doc.save("most_repeated_questions.pdf");
     };
 
   } catch(err){
