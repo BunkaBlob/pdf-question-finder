@@ -112,5 +112,7 @@ def upload_files():
     common = find_common_questions(all_questions)
     return jsonify(common)
 
+# -------- RUN APP (Render-ready) --------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))  # Render sets PORT environment variable
+    app.run(host="0.0.0.0", port=port, debug=False)
